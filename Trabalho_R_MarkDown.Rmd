@@ -1,0 +1,402 @@
+---
+title: "Análise dataset sobre COVID19 Brasil"
+author: "Arnaldo Cavalcanti Portfolio"
+output:
+  html_document: default
+mode: selfcontained
+widgets: nyt_home
+highlighter: prettify
+hitheme: twitter-bootstrap
+assets:
+  css:
+  - http://fonts.googleapis.com/css?family=Raleway:300
+  - http://fonts.googleapis.com/css?family=Oxygen
+framework: bootstrap
+always_allow_html: TRUE
+---
+
+
+<style>
+body{
+  font-family: 'Oxygen', sans-serif;
+  font-size: 16px;
+  line-height: 24px;
+}
+
+h1,h2,h3,h4 {
+  font-family: 'Raleway', sans-serif;
+}
+
+.container { width: 1000px; }
+h3 {
+  background-color: #D4DAEC;
+  text-indent: 100px; 
+}
+h4 {
+  text-indent: 100px;
+}
+
+g-table-intro h4 {
+  text-indent: 0px;
+}
+</style>
+
+<a href="https://github.com/timelyportfolio/rCharts_nyt_home_price"><img style="position: absolute; top: 0; right: 0; border: 0;" src="https://s3.amazonaws.com/github/ribbons/forkme_right_darkblue_121621.png" alt="Fork me on GitHub"></a>
+
+# Estudo e Análise do DATASET sobre o COVID19 no Brasil
+
+---
+<br/>
+### Sobre o trabalho
+
+**Esse dataset com casos do COVID19, atualizados, foi criado pelo Rafael Fontes e disponibilizado no Kaggle <a href = "https://www.kaggle.com/unanimad/corona-virus-brazil?select=brazil_covid19.csv"> clique aqui para acessar</a>.  Este foi um trabalho que fiz em meu curso de AI da FIAP para finalizar a disciplina de R .** 
+
+```{r global-options, include=FALSE}
+knitr::opts_chunk$set(fig.width=12, fig.height=8, fig.path='Figs/',
+                      echo=TRUE, warning=TRUE, message=TRUE)
+```
+
+### Carregando o datase CSV referente ao casos de COVID9 no Brasil e exibindo as primeiras linhas do mesmo.
+
+
+```{r}
+data <- read.csv("~/Documents/FIAP/Aula de R/data/brazil_covid19.csv", stringsAsFactors = FALSE)
+head(data)
+```
+
+### Habilitando as bibliotecas que serão utilizadas no projeto
+
+```{r}
+library(dplyr)
+library(plotly)
+library(stringi)
+library(rgdal)
+library(spdplyr)
+library(rgeos)
+library(ggplot2)
+library(leaflet)
+library(tinytex)
+```
+
+### Mostrar a data mais atual dos registro de dados
+
+```{r}
+head(data %>% distinct(date) %>% arrange(desc(date)),1)
+```
+
+### Mostrar a data mais antiga dos registro de dados
+
+```{r}
+head(data %>% distinct(date) %>% arrange(date),1)
+```
+### Verificando os tidos das colunas do dataset
+
+```{r}
+str(data)
+```
+
+### Agrupando os casos e mortes por dia da ocorrência usando PIPE
+
+```{r}
+data %>%
+  group_by(date) %>%
+  summarise(cases = sum(cases),deaths = sum(deaths), .groups = NULL) -> df2
+```
+
+
+### Gráfico usando PLOTLY com os números de CASOS de COVID9 por dia
+
+```{r}
+fig <- plot_ly(
+  x = df2$date,
+  y = df2$cases,
+  name = "Número de Casos - COVID9",
+  type = "bar"
+)
+
+fig
+```
+
+
+
+### Gráfico usando PLOTLY com os números de MORTES de COVID9 por dia
+
+```{r}
+fig <- plot_ly(
+  x = df2$date,
+  y = df2$deaths,
+  name = "Número de Casos - COVID9",
+  type = "bar",
+  marker = list(color = 'rgb(255,140,0)')
+)
+
+fig
+```
+
+
+### Gráfico usando PLOTLY com o comparativo de CASOS X MORTES diárias
+
+```{r}
+
+p4 <- plot_ly(df2,
+              x = df2$date,
+              y = df2$cases,
+              type = "bar",
+              name = "Casos") %>% 
+  add_trace(y = df2$deaths,
+            name = "Mortes") %>% 
+  layout(yaxis = list(title = "Comparativo de Casos X Mortes diárias"),
+         barmode = "stack")
+p4
+
+
+```
+
+### Criando uma função para remover acentos usando a lib stringi
+
+```{r}
+remove_accents <- function(a){
+  unaccented_string = stri_trans_general(str = a, id="Latin-ASCII")
+  return(unaccented_string)
+}
+```
+
+
+### Agrupando casos por estado usado PIPE e FILTER
+
+
+```{r}
+atual = max(data$date)
+data %>%
+  filter(date == max(date)) %>%
+  group_by(state) %>%
+  summarise(cases = sum(cases), deaths = sum(deaths)) -> df3
+```
+
+### Alterando o nome de uma coluna de um dataframe
+
+```{r}
+  data.frame(state=df3$state, cases=df3$cases, deaths=df3$deaths) -> df4
+  colnames(df4)[1] <- "name"
+  head(df4)
+```
+
+### Lendo o arquivo GEOJSON  (SpatialPolygon) com a geolocalização dos estados brasileiros
+
+
+```{r}
+
+brazil3 <- readOGR(dsn = "~/Documents/FIAP/Aula de R/data/brazil_geo.json")
+
+```
+
+### Verificando o conteúdo do arquivo importado
+
+```{r}
+summary(brazil3)
+names(brazil3)
+
+```
+
+
+
+### Ordenando o DF4 pela coluna name
+
+```{r}
+df4 <- arrange(df4, df4$name)
+head(df4)
+```
+
+
+### Merge de dois datasets pela coluna name
+
+```{r}
+pop_states1 <- left_join(df4, brazil3, by = "name", copy = TRUE)
+pop_states1
+```
+### Merge de dois datasets pela coluna name. Usando outra configuração
+
+```{r}
+pop_states2 <- merge(df4, brazil3, by.x="name", by.y="name")
+pop_states2
+```
+
+### Usando o CBIND para unir dois arquivos 
+
+```{r}
+pop_states3 <- cbind(df4, brazil3)
+pop_states3
+```
+### Alterando o nome da coluna do estado
+
+```{r}
+
+colnames(pop_states3)[1] <- "estado"
+pop_states3
+```
+### Usando o MERGE sem parâmetros
+
+```{r}
+pop_states4 <- merge(pop_states3, brazil3)
+pop_states4
+
+```
+
+### Fazendo o MERGE entre um DATAFRAME e um SPATIAL POLYGON
+
+```{r}
+
+zones.spwd <- brazil3
+zones.spwd@data <- merge(zones.spwd@data, pop_states4, by = "name",  all = FALSE)
+pop_states7 <- merge(zones.spwd@data, pop_states4, by = "name",  all = FALSE)
+#geocords = jsonlite::
+#str(zones.spwd)
+plot(zones.spwd)
+names(zones.spwd@data)
+```
+### Visualizando após o Merge
+
+```{r}
+head(zones.spwd@data, 10)
+```
+
+### Visualizando os arquivo Zones Gerado
+
+```{r}
+zones.spwd
+```
+
+### Manipulando o Spatial Polyton gerado
+
+```{r}
+print(zones.spwd@data$cases[[1]])
+print(zones.spwd@data[[1,1]])
+```
+
+
+### Removendo acentos do Spatial Polygon DATA FRAME
+
+```{r}
+zones.spwd$name <- remove_accents(zones.spwd$name)
+#zones.spwd$name.y <- remove_accents(zones.spwd$name.y)
+```
+
+### Gerando o gráfico pelo LEAFLET das regioes por GeoLocation
+
+```{r}
+
+
+
+bins <- c(0, 50, 75, 100, 150, Inf)
+pal <- colorBin("YlOrRd", domain = zones.spwd@data[,5], bins = bins)
+
+state_popup <- paste0("<strong>Estado: </strong>", 
+                      zones.spwd$name.x, 
+                      "<br><strong>Casis por 100,000 habitante </strong>", 
+                      zones.spwd@data[,5]) %>% lapply(htmltools::HTML)
+
+leaflet(data = zones.spwd) %>%
+        setView(lng=-53.2, lat=-10.33, zoom=4) %>%
+        addProviderTiles("MapBox", options = providerTileOptions(id = "mapbox.light",
+                accessToken = Sys.getenv('MAPBOX_ACCESS_TOKEN'))) %>%
+        addPolygons(
+                fillColor = topo.colors(10, alpha = NULL),
+                weight = 2,
+                opacity = 1,
+                color = "white",
+                dashArray = "3",
+                fillOpacity = 0.7,
+                highlight = highlightOptions(
+                        weight = 5,
+                        color = "#666",
+                        dashArray = "",
+                        fillOpacity = 0.7,
+                        bringToFront = TRUE),
+                label = pop_states4,
+                labelOptions = labelOptions(
+                        style = list("font-weight" = "normal", padding = "3px 8px"),
+                        textsize = "15px",
+                        direction = "auto")) %>%
+        addLegend(pal = pal, values = ~zones.spwd@data[,5], opacity = 0.7, title = "Incidents", position = "bottomright")
+```
+
+### Lendo um arquivo com a população do Brasil até 2019.
+
+```{r}
+populacao <- read.csv("~/Documents/FIAP/Aula de R/data/populacao.csv", sep=";")
+head(populacao)
+```
+
+### Removendo os acentos da coluna de nomes de estados
+
+```{r}
+populacao$name <- remove_accents(populacao$name)
+head(populacao)
+```
+
+
+### Fazendo o BIND entre dois datasets e alterando o nome de uma coluna
+### Utilizando o mutate para criar novas colunas calculadas
+
+
+```{r}
+populacao_bind <- cbind(populacao, df4)
+colnames(populacao_bind)[6] <- "estado"
+populacao_bind <- mutate(populacao_bind, casespor100mil  = (populacao_bind$cases / populacao_bind$populacao)*100000)
+populacao_bind <- mutate(populacao_bind, deathspor100mil  = (populacao_bind$deaths / populacao_bind$populacao)*100000)
+populacao_bind <- mutate(populacao_bind, letalidade  = round(populacao_bind$deaths / populacao_bind$cases, 3)*100)
+head(populacao_bind)
+```
+
+### Gráfico usando PLOTLY com os números de casos por 100 habitantes
+
+```{r}
+fig <- plot_ly(
+  x = populacao_bind$estado,
+  y = populacao_bind$casespor100mil,
+  name = "Número de Casos - COVID9",
+  type = "bar",
+  marker = list(color = 'rgb(255,140,0)')
+)
+
+fig
+```
+
+
+
+### Gráfico usando PLOTLY com os números de mortes por 100 habitantes
+
+```{r}
+fig <- plot_ly(
+  x = populacao_bind$estado,
+  y = populacao_bind$deathspor100mil,
+  name = "Número de Casos - COVID9",
+  type = "bar",
+  marker = list(color = 'rgb(255,140,0)')
+)
+
+fig
+```
+
+
+### Taxa de letalidade por estado
+
+```{r}
+fig <- plot_ly(
+  x = populacao_bind$estado,
+  y = populacao_bind$letalidade,
+  name = "Número de Casos - COVID9",
+  type = "bar",
+  marker = list(color = 'rgb(255,140,0)')
+)
+
+fig
+```
+
+
+### Agradecimento
+
+**Em agradecimento especial ao professor Elthon Freitas do curso de AI  - Turma 14 da FIAP ** 
+
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
